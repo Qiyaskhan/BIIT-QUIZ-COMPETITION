@@ -1,0 +1,579 @@
+import pyodbc
+from flask import Flask, jsonify, request
+
+app = Flask(__name__)
+
+connection = pyodbc.connect(
+    'DRIVER={Sql Server};SERVER=OSAMA;DATABASE=BQC;Trusted_Connection=yes;')
+
+
+# Login Function For Student And Teacher
+
+@app.route('/login', methods=['POST'])
+def login():
+    list1 = []
+    id = request.form['id']
+    password = request.form['password']
+    print(id, password)
+
+    cursor = connection.cursor()
+    # Student
+    cursor.execute("select * from student where regNo = '" + id + "' and sPassword = '" + password + "' ")
+    for row in cursor:
+        list1.append({'RegNo': row[0], 'Name': row[1], 'Password': row[2], 'Semester': row[3], 'Role': row[4]})
+
+    # # Teacher
+    cursor.execute("select * from teacher where email = '" + id + "' and tPassword = '" + password + "' ")
+    for row in cursor:
+        list1.append({'Email': row[0], 'Name': row[1], 'Password': row[2], 'Role': row[3]})
+
+    print(list1)
+    return jsonify(list1)
+
+
+# Get All The Available Subjects
+
+@app.route('/getSubjects', methods=['Get'])
+def getSubjects():
+    list1 = []
+    cursor = connection.cursor()
+    cursor.execute("Select subject From Subjects")
+    for row in cursor:
+        list1.append({'label': row[0], 'value': row[0] })
+
+    print(list1)
+
+    return jsonify(list1)
+
+
+# Get All The Available Subjects By Title Name
+
+@app.route('/getSubjectByTitle', methods=['Post'])
+def getSubjectByTitle():
+    list1 = []
+    QuizTitle = request.form['QuizTitle']
+    print(QuizTitle)
+
+    cursor = connection.cursor()
+    cursor.execute("Select subject From Quiz where title = '"+QuizTitle+"'")
+    Subject = None
+    for row in cursor:
+        Subject = row[0]
+
+    print(Subject)
+
+    return jsonify(Subject)
+
+
+# Get All The Available Quiz Titles
+
+@app.route('/getTitles', methods=['Get'])
+def getTitles():
+    list1 = []
+    cursor = connection.cursor()
+    cursor.execute("Select title From Quiz")
+    for row in cursor:
+        list1.append({'label': row[0], 'value': row[0] })
+
+    print(list1)
+    return jsonify(list1)
+
+
+# Get All The Available Quiz Titles By Semester And Date
+
+@app.route('/getTitlesBySemesterAndDate', methods=['Post'])
+def getTitlesBySemester():
+    list1 = []
+    Semester = request.form['Semester']
+    Date = request.form['Date']
+    print('Semester: ', Semester)
+    print('Date: ', Date)
+    cursor = connection.cursor()
+    cursor.execute("Select q.title, q.totalTime from Quiz q, QuizHasAllowedSemesters qhs, Semesters s where q.QuizID = qhs.QuizID "
+                   "and s.semesterID = qhs.semesterID and s.semester= '"+Semester+"' and q.date = '"+Date+"'")
+    for row in cursor:
+        list1.append({'label': row[0], 'value': row[0], 'Time': row[1] })
+
+    print(list1)
+    return jsonify(list1)
+
+
+
+# Save MCQS Question With Subject And Difficulty Level
+
+@app.route('/saveMCQS', methods=['POST'])
+def saveMCQS():
+    TeacherEmail = request.form['TeacherEmail']
+    Question = request.form['Question']
+    Option1 = request.form['Option1']
+    Option2 = request.form['Option2']
+    Option3 = request.form['Option3']
+    Option4 = request.form['Option4']
+    Answer = request.form['Answer']
+    Subject = request.form['Subject']
+    Difficulty = request.form['Difficulty']
+    print(Question, Option1, Option2, Option3, Option4, Answer, Subject, Difficulty, TeacherEmail)
+
+    cursor = connection.cursor()
+    cursor.execute(
+        "Insert into MCQS (question, opt1, opt2, opt3, opt4, answer, difficultyLevel, subject) Values ('" + Question + "','"
+        + Option1 + "', '" + Option2 + "', '" + Option3 + "','" + Option4 + "','" + Answer + "','" + Difficulty + "', '" + Subject + "')")
+    connection.commit()
+
+    return jsonify('MCQS Saved Successfully')
+
+
+# Get Quiz ID Base On Title
+
+@app.route('/getQuizID', methods=['POST'])
+def quizID():
+    Title = request.form['Title']
+
+    cursor = connection.cursor()
+    cursor.execute("Select quizID from Quiz where title = '" + Title + "' ")
+    quizID = None
+    for row in cursor:
+        quizID = row[0]
+    connection.commit()
+
+    return jsonify(quizID)
+
+
+# Save Quiz Detail
+
+@app.route('/setQuizDetail', methods=['POST'])
+def quizDetail():
+    Title = request.form['Title']
+    Date = request.form['Date']
+    Time = request.form['Time']
+    TotalQuestions = request.form['TotalQuestions']
+    Subject = request.form['Subject']
+    EasyQuestions = request.form['EasyQuestions']
+    MediumQuestions = request.form['MediumQuestions']
+    HardQuestions = request.form['HardQuestions']
+    TeacherEmail = request.form['TeacherEmail']
+
+    print(Title, Date, Time, TotalQuestions, Subject,EasyQuestions,MediumQuestions,HardQuestions)
+
+    # Inserting Data In Quiz Table
+    cursor = connection.cursor()
+    cursor.execute("Insert into Quiz (title, date, totalTime, totalQuestions, Easy, Medium, Hard, subject) values "
+     "('" + Title + "', '" + Date + "','"+Time+"' ,'" + TotalQuestions + "','" + EasyQuestions + "',"
+     "'" + MediumQuestions + "','" + HardQuestions + "', '" + Subject + "')")
+    connection.commit()
+
+    # Getting Quiz ID
+    cursor2 = connection.cursor()
+    cursor2.execute("Select quizID from Quiz where title = '" + Title + "' ")
+    quizID = None
+    for row in cursor2:
+        quizID = row[0]
+    connection.commit()
+
+    AllowedSemesters = []
+    semesterID = []
+    SemesterCount = request.form['SemesterCount']  # 3
+    print(SemesterCount)
+
+    # Appending Semester Data
+    for index in range(int(SemesterCount)):
+        AllowedSemesters.append(request.form[f"Semester[{index}]"])
+
+    print(AllowedSemesters)
+
+    # Getting Semester ID's
+    cursor5 = connection.cursor()
+    for semester in AllowedSemesters:
+        cursor5.execute("Select semesterID from Semesters where semester = '"+semester+"'")
+        for row in cursor5:
+            semesterID.append(row[0])
+    connection.commit()
+
+    print(semesterID)
+
+    cursor6 = connection.cursor()
+    for id in semesterID:
+        cursor6.execute(f"Insert Into QuizHasAllowedSemesters (quizID, semesterID) Values ({quizID}, {id})")
+    connection.commit()
+
+    print('QuizID',quizID)
+    return jsonify(quizID)
+
+
+
+# Get All Quizes Available
+
+@app.route('/getAllQuizes', methods=['Get'])
+def getAllQuizes():
+    list1 = []
+    cursor = connection.cursor()
+    cursor.execute("Select * From Quiz")
+    for row in cursor:
+        list1.append({'QuizID':row[0],'QuizTitle':row[1],'Date': row[2], 'Time': row[3], 'TotalQuestions': row[4], 'EasyQuestions': row[5], 'MediumQuestions': row[6], 'HardQuestions': row[7], 'Subject': row[8]})
+
+    print(list1)
+    return jsonify(list1)
+
+
+# Edit Quiz
+
+@app.route('/editQuizes', methods=['Post'])
+def editQuizes():
+    QuizID = request.form['QuizID']
+    Title = request.form['Title']
+    Date = request.form['Date']
+    Time = request.form['Time']
+    TotalQuestions = request.form['TotalQuestions']
+    Subject = request.form['Subject']
+    EasyQuestions = request.form['EasyQuestions']
+    MediumQuestions = request.form['MediumQuestions']
+    HardQuestions = request.form['HardQuestions']
+    TeacherEmail = request.form['TeacherEmail']
+
+    print(Title, Date, Time, TotalQuestions, Subject, EasyQuestions, MediumQuestions, HardQuestions)
+
+    # Inserting Data In Quiz Table
+    cursor = connection.cursor()
+    cursor.execute("UPDATE Quiz SET title ='" + Title + "' ,date = '" + Date + "',totalTime ='" + Time + "' "
+                    ",totalQuestions = '" + TotalQuestions + "',Easy='" + EasyQuestions + "',Medium='" + MediumQuestions + "'"
+                    ",Hard='" + HardQuestions + "',subject= '" + Subject + "' Where quizID = '"+QuizID+"'")
+    connection.commit()
+
+    return jsonify('Quiz Edited Succesfully')
+
+
+# Delete Quiz
+
+
+@app.route('/deleteQuiz', methods=['Post'])
+def deleteQuiz():
+    QuizID = request.form['QuizID']
+    print(QuizID)
+
+    cursor1 = connection.cursor()
+    cursor1.execute("delete from QuizHasMCQS where quizID = '" + QuizID + "' ")
+    connection.commit()
+
+    cursor2 = connection.cursor()
+    cursor2.execute("delete from QuizHasAllowedSemesters where quizID = '" + QuizID + "' ")
+    connection.commit()
+
+
+    cursor = connection.cursor()
+    cursor.execute("delete from Quiz where quizID = '"+QuizID+"' ")
+    connection.commit()
+
+    return jsonify('Quiz Deleted Successfully')
+
+
+
+# Save MCQS Against The Quiz
+
+@app.route('/quiz', methods=['Post'])
+def quiz():
+    QuizID = request.form['QuizID']
+    print(QuizID)
+    QuestionCount = request.form['QuestionCount']
+    QuestionIDS = []
+
+    for index in range(int(QuestionCount)):
+        QuestionIDS.append(request.form[f'QuestionID[{index}]'])
+
+    print(QuizID)
+    print(QuestionCount)
+    print(QuestionIDS)
+    cursor = connection.cursor()
+    for ids in QuestionIDS:
+        cursor.execute(f"Insert Into QuizHasMCQS (quizID, questionID) Values ({QuizID},{ids})")
+    connection.commit()
+
+    return jsonify(QuizID)
+
+
+# Get All The MCQS
+
+@app.route('/getMCQS', methods=['Get'])
+def questionBank():
+    MCQS = []
+    cursor = connection.cursor()
+    cursor.execute("Select * from MCQS")
+    for column in cursor:
+        MCQS.append({'QuestionID': column[0], 'QuestionName': column[1],
+                     'Option1': column[2], 'Option2': column[3], 'Option3': column[4],
+                     'Option4': column[5], 'Answer': column[6], 'Subject': column[7], 'DifficultyLevel': column[8]})
+    return jsonify(MCQS)
+
+
+# Get MCQS Base On Quiz ID
+
+@app.route('/getMCQSWithQuizID', methods=['Post'])
+def getMCQSWithQuizID():
+    QuizID = request.form['QuizID']
+    print(QuizID)
+    MCQS = []
+    cursor = connection.cursor()
+    cursor.execute("Select m.* from MCQS m, Quiz q, QuizHasMCQS qhs where m.questionID = qhs.questionID and q.quizID = qhs.quizID  and q.quizID  = '"+QuizID+"'")
+    for column in cursor:
+        MCQS.append({'QuestionID': column[0], 'QuestionName': column[1],
+                     'Option1': column[2], 'Option2': column[3], 'Option3': column[4],
+                     'Option4': column[5], 'Answer': column[6], 'Subject': column[7], 'DifficultyLevel': column[8]})
+    print(MCQS)
+    return jsonify(MCQS)
+
+
+# Get All The MCQS Base On Subject
+
+@app.route('/getMCQSWithSubject', methods=['Post'])
+def getMCQSWithSubject():
+    Subject = request.form['Subject']
+    print(Subject)
+    MCQS = []
+    cursor = connection.cursor()
+    cursor.execute("Select * from MCQS where subject = '"+Subject+"'")
+    for column in cursor:
+        MCQS.append({'QuestionID': column[0], 'QuestionName': column[1],
+                     'Option1': column[2], 'Option2': column[3], 'Option3': column[4],
+                     'Option4': column[5], 'Answer': column[6], 'Subject': column[7], 'DifficultyLevel': column[8]})
+    print(MCQS)
+    return jsonify(MCQS)
+
+
+# Get Quiz And MCQS Base On A Title
+
+@app.route('/getQuiz', methods=['Post'])
+def getQuiz():
+    list1 = []
+
+    QuizTitle = request.form['QuizTitle']
+
+    print(QuizTitle)
+
+    # Getting Quiz ID
+    cursor2 = connection.cursor()
+    cursor2.execute("Select quizID from Quiz where title = '"+QuizTitle+"' ")
+    quizID = None
+    for row in cursor2:
+        quizID = row[0]
+    connection.commit()
+
+    print(quizID)
+    counter = 1
+    cursor = connection.cursor()
+    cursor.execute(f"select * From MCQS s, QuizHasMCQS qhs, Quiz q where qhs.questionID = s.questionID and qhs.quizID = q.quizID and q.quizID = {quizID}")
+    for column in cursor:
+        list1.append({'QuestionID': column[0], 'QuestionName': column[1],
+                     'Option1': column[2], 'Option2': column[3], 'Option3': column[4],
+                     'Option4': column[5], 'Answer': column[6], 'DifficultyLevel': column[8], 'Subject': column[7], 'QuestionNo': counter})
+        counter = counter + 1
+        print(counter)
+    return jsonify(list1)
+
+
+# Edit MCQS
+
+
+@app.route('/editMCQS', methods=['Post'])
+def editMCQS():
+    TeacherEmail = request.form['TeacherEmail']
+    QuestionID = request.form['QuestionID']
+    Question = request.form['Question']
+    Option1 = request.form['Option1']
+    Option2 = request.form['Option2']
+    Option3 = request.form['Option3']
+    Option4 = request.form['Option4']
+    Answer = request.form['Answer']
+    Subject = request.form['Subject']
+    Difficulty = request.form['Difficulty']
+
+    print(Question, Option1, Option2, Option3, Option4, Answer, Subject, Difficulty, TeacherEmail)
+
+    cursor = connection.cursor()
+    cursor.execute( " UPDATE MCQS SET question =  '" + Question + "', opt1 = '" + Option1 + "', opt2 = '" + Option2 + "'"
+    ", opt3 =  '" + Option3 + "', opt4 = '" + Option4 + "', answer = '" + Answer + "',"
+    " difficultyLevel = '" + Difficulty + "', subject =  '" + Subject + "' WHERE questionID = '" + QuestionID + "'")
+    connection.commit()
+
+    return jsonify('MCQS Edited Successfully')
+
+
+# Delete MCQS
+
+@app.route('/deleteMCQS', methods=['Post'])
+def deleteMCQS():
+    QuestionID = request.form['QuestionID']
+    print(QuestionID)
+
+    cursor1 = connection.cursor()
+    cursor1.execute("delete from QuizHasMCQS where questionID = '" + QuestionID + "' ")
+    connection.commit()
+
+    cursor = connection.cursor()
+    cursor.execute("delete from MCQS where questionID = '"+QuestionID+"' ")
+    connection.commit()
+
+    return jsonify('MCQS Deleted Successfully')
+
+
+# Get Results Of All Students
+
+@app.route('/getAllResults', methods=['Get'])
+def getAllResults():
+    list1 = []
+    list1.append({'ResultID': 'ResultID', 'TotalNumbers': 'TotalNumbers', 'ObtainedNumbers': 'ObtainedNumbers', 'RegNo': 'RegNo',
+                  'QuizTitle': 'QuizTitle', 'Subject': 'Subject', 'EasyWrong': 'EasyWrong', 'MediumWrong': 'MediumWrong',
+                  'HardWrong': 'HardWrong', 'EasyRight': 'EasyRight', 'MediumRight': 'MediumRight', 'HardRight': 'HardRight'})
+    cursor = connection.cursor()
+    cursor.execute("Select * from Results")
+    for row in cursor:
+        list1.append({'ResultID':row[0], 'TotalNumbers': row[1], 'ObtainedNumbers':row[2],'RegNo':row[3],'QuizTitle': row[4], 'Subject': row[5], 'EasyWrong': row[6],'MediumWrong': row[7],'HardWrong': row[8],'EasyRight': row[9],'MediumRight': row[10],'HardRight': row[11]})
+
+    print(list1)
+
+    return jsonify(list1)
+
+# Get Results Base On Result ID
+
+@app.route('/getResultIDS', methods=['Get'])
+def getResultIDS():
+    list1 = []
+
+    cursor = connection.cursor()
+    cursor.execute("Select resultID from Results")
+    for row in cursor:
+        list1.append({'resultID':row[0]})
+
+    print(list1)
+
+    return jsonify(list1)
+
+
+# Get Detail Of Result By Result ID
+
+
+@app.route('/getResultDetail', methods=['Post'])
+def getResultDetail():
+    ResultID = request.form['ResultID']
+    print(ResultID)
+    cursor = connection.cursor()
+    list1 = []
+    cursor.execute("Select m.*, rhm.SelectedAnswer, r.quizTitle from Results r, ResultHasMCQS rhm , MCQS m where r.resultID = rhm.resultID and m.questionID = rhm.questionID and r.resultID = '"+ResultID+"'")
+    for column in cursor:
+        list1.append({'QuestionID': column[0], 'QuestionName': column[1],
+         'Option1': column[2], 'Option2': column[3], 'Option3': column[4],
+         'Option4': column[5], 'Answer': column[6], 'Subject': column[7], 'DifficultyLevel': column[8],
+         'SelectedAnswer': column[9], 'QuizTitle': column[10]})
+
+    print(list1)
+    return jsonify(list1)
+
+
+# Search Result By Title, Subject And Registration No
+
+@app.route('/searchResult', methods=['Post'])
+def searchResult():
+    Name = request.form['searchBy'] # Title, Subject, Student
+    Value = request.form['Value'] #
+    print(Name, Value)
+    list1 = []
+
+    cursor = connection.cursor()
+
+    if Name == 'Title':
+        cursor.execute("Select * from Results where quizTitle = '"+Value+"'")
+    elif Name == 'Subject':
+        cursor.execute("Select * from Results where Subject = '" + Value + "'")
+    elif Name == 'Student':
+        cursor.execute("Select * from Results where regNo = '" + Value + "'")
+
+    for row in cursor:
+        list1.append({'ResultID':row[0], 'TotalNumbers': row[1], 'ObtainedNumbers':row[2],'RegNo':row[3],'QuizTitle': row[4], 'Subject': row[5], 'EasyWrong': row[6],'MediumWrong': row[7],'HardWrong': row[8],'EasyRight': row[9],'MediumRight': row[10],'HardRight': row[11]})
+
+    print(list1)
+
+    return jsonify(list1)
+
+
+
+# Get Result By Registration No
+
+@app.route('/getResult', methods=['Post'])
+def getResult():
+    list1 = []
+    list1.append({'ResultID': 'ResultID', 'TotalNumbers': 'TotalNumbers', 'ObtainedNumbers': 'ObtainedNumbers', 'RegNo': 'RegNo',
+                  'QuizTitle': 'QuizTitle', 'Subject': 'Subject', 'EasyWrong': 'EasyWrong', 'MediumWrong': 'MediumWrong',
+                  'HardWrong': 'HardWrong', 'EasyRight': 'EasyRight', 'MediumRight': 'MediumRight', 'HardRight': 'HardRight'})
+    RegNo = request.form['RegNo']
+    print('RegNo: ', RegNo)
+
+    cursor = connection.cursor()
+    cursor.execute("Select * from Results where regNo = '"+RegNo+"' ")
+    for row in cursor:
+        list1.append({'ResultID': row[0], 'TotalNumbers': row[1], 'ObtainedNumbers': row[2], 'RegNo': row[3],
+                      'QuizTitle': row[4], 'Subject': row[5], 'EasyWrong': row[6], 'MediumWrong': row[7],
+                      'HardWrong': row[8], 'EasyRight': row[9], 'MediumRight': row[10], 'HardRight': row[11]})
+
+    print(list1)
+
+    return jsonify(list1)
+
+
+# Save Results Of Quiz
+
+@app.route('/saveResults', methods=['Post'])
+def saveResults():
+
+    TotalMarks = request.form['TotalMarks']
+    ObtainedMarks = request.form['ObtainedMarks']
+    Student = request.form['Student']
+    QuizTitle = request.form['QuizTitle']
+    Subject = request.form['Subject']
+    EasyWrong = request.form['EasyWrong']
+    MediumWrong = request.form['MediumWrong']
+    HardWrong = request.form['HardWrong']
+    EasyRight = request.form['EasyRight']
+    MediumRight = request.form['MediumRight']
+    HardRight = request.form['HardRight']
+
+    print(TotalMarks, ObtainedMarks, Student, QuizTitle, Subject)
+
+    cursor = connection.cursor()
+    cursor.execute("Insert Into Results (totalNumbers, obtainedNumbers,regNo, quizTitle, subject,	noOfEasyWrong,"
+                   "noOfMediumWrong,noOfHardWrong,noOfEasyRight,noOfMediumRight,noOfHardRight) Values "
+                   "('"+TotalMarks+"', '"+ObtainedMarks+"', '"+Student+"','"+QuizTitle+"','"+Subject+"','"+EasyWrong+"','"+MediumWrong+"','"+HardWrong+"','"+EasyRight+"','"+MediumRight+"','"+HardRight+"')")
+    connection.commit()
+
+    QuestionIDs = []
+    SelectedAnswers = []
+    QuestionCount = request.form['QuestionCount']  # 3
+    print(QuestionCount)
+
+    # Appending Semester Data
+    for index in range(int(QuestionCount)):
+        QuestionIDs.append(request.form[f"QuestionID[{index}]"])
+        SelectedAnswers.append(request.form[f"SelectedAnswer[{index}]"])
+
+    print(QuestionIDs)
+    print(SelectedAnswers)
+
+    resultID = None
+    cursor = connection.cursor()
+    cursor.execute("Select resultID from Results Where regNo = '"+Student+"' and quizTitle = '"+QuizTitle+"'")
+    for row in cursor:
+        resultID = row[0]
+
+    print(resultID)
+
+    # Getting Semester ID's
+    cursor5 = connection.cursor()
+    for index in range(int(QuestionCount)):
+        print(resultID, QuestionIDs[index], SelectedAnswers[index])
+        cursor5.execute(f"Insert Into ResultHasMCQS (resultID, questionID, selectedAnswer) Values ( {resultID},{QuestionIDs[index]}" ",'"+SelectedAnswers[index]+"' )")
+    connection.commit()
+
+    print(resultID)
+
+    return jsonify("Result Saved...")
+
+
+if __name__ == "__main__":
+    app.run(host='192.168.4.106', debug=True)
